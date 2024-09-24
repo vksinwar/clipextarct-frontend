@@ -259,7 +259,89 @@
     <script>
         // Existing download functionality
         document.getElementById('downloadForm').addEventListener('submit', async function(e) {
-            // ... (keep existing download code) ...
+            e.preventDefault();
+            const videoUrl = document.getElementById('videoUrl').value;
+            const button = document.getElementById('downloadButton');
+            const buttonText = document.getElementById('buttonText');
+            const buttonSpinner = document.getElementById('buttonSpinner');
+            const messageDiv = document.getElementById('message');
+
+            // Input validation
+            const urlPatterns = {
+                instagram: /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/[\w-]+\/?/,
+                youtube: /^https?:\/\/(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[\w-]+/,
+                facebook: /^https?:\/\/(www\.)?(facebook\.com|fb\.watch)\/.*?(\/videos\/|\/watch\/?\?v=)?\d+/,
+                tiktok: /^https?:\/\/(www\.|vm\.)?tiktok\.com\/(@[\w.-]+\/video\/\d+|\w+\/?)/,
+                twitter: /^https?:\/\/(www\.)?twitter\.com\/\w+\/status\/\d+/,
+                vimeo: /^https?:\/\/(www\.)?vimeo\.com\/\d+/,
+                dailymotion: /^https?:\/\/(www\.)?dailymotion\.com\/video\/\w+/,
+                twitch: /^https?:\/\/(www\.)?twitch\.tv\/\w+(\/clip\/\w+)?/,
+                linkedin: /^https?:\/\/(www\.)?linkedin\.com\/(posts|video)\/.*$/
+            };
+
+            let matchedPlatform = null;
+            for (const [platform, pattern] of Object.entries(urlPatterns)) {
+                if (pattern.test(videoUrl)) {
+                    matchedPlatform = platform;
+                    break;
+                }
+            }
+
+            if (!matchedPlatform) {
+                messageDiv.textContent = 'Error: Please enter a valid video URL from a supported platform.';
+                return;
+            }
+
+            button.disabled = true;
+            buttonText.textContent = 'Downloading...';
+            buttonSpinner.style.display = 'inline-block';
+            messageDiv.textContent = '';
+
+            try {
+                const response = await fetch('http://localhost:8000/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: videoUrl }),
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const downloadUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = downloadUrl;
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'video.mp4';
+                    if (contentDisposition) {
+                        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                        const matches = filenameRegex.exec(contentDisposition);
+                        if (matches != null && matches[1]) {
+                            filename = matches[1].replace(/['"]/g, '');
+                        }
+                    }
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(downloadUrl);
+                    messageDiv.textContent = 'Download complete!';
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Download failed');
+                }
+            } catch (error) {
+                console.error('Download error:', error);
+                if (error.message === 'Failed to fetch') {
+                    messageDiv.textContent = 'Error: Unable to connect to the server. Please check your internet connection and try again.';
+                } else {
+                    messageDiv.textContent = 'Error: ' + error.message;
+                }
+            } finally {
+                button.disabled = false;
+                buttonText.textContent = 'Download';
+                buttonSpinner.style.display = 'none';
+            }
         });
 
         // Modal functionality
